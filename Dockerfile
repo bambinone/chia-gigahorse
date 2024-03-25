@@ -8,7 +8,8 @@ WORKDIR /
 ARG GIT_RELEASE
 RUN GIT_RELEASE=${GIT_RELEASE%-*} \
     && curl -L https://github.com/madMAx43v3r/chia-gigahorse/releases/download/v${GIT_RELEASE}/chia-gigahorse-farmer-${GIT_RELEASE}-x86_64.tar.gz --output chia-gigahorse-farmer.tar.gz \
-    && tar -xf chia-gigahorse-farmer.tar.gz
+    && tar -xf chia-gigahorse-farmer.tar.gz \
+    && curl -L https://raw.githubusercontent.com/Chia-Network/chia-docker/main/docker-healthcheck.sh --output /chia-gigahorse-farmer/docker-healthcheck.sh
 
 
 FROM mikefarah/yq:4 AS yq
@@ -17,19 +18,28 @@ FROM mikefarah/yq:4 AS yq
 FROM debian:12-slim AS base
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install --no-install-recommends -y \
-	ocl-icd-libopencl1 tzdata \
+	curl \
+	netcat-traditional \
+	ocl-icd-libopencl1 \
+	tzdata \
 	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /chia-gigahorse-farmer
 
 COPY --from=yq /usr/bin/yq /usr/bin/yq
 COPY --from=builder /chia-gigahorse-farmer .
-COPY docker-entrypoint.sh docker-start.sh .
 
 ENV CHIA_ROOT="/root/.chia/mainnet"
 ENV CHIA_SERVICES="farmer"
 
 EXPOSE 8444 8555
+
+ENV log_level="INFO"
+ENV log_to_file="false"
+ENV healthcheck="true"
+
+HEALTHCHECK --interval=1m --timeout=10s --start-period=20m \
+  CMD ./docker-healthcheck.sh || exit 1
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["./docker-start.sh"]
